@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  mcp-remote:
+    build: .
+    image: mcp-remote:latest
+    container_name: mcp-remote
+
+    # Mount auth directory for token persistence
+    volumes:
+      - mcp-auth:/home/mcp/.mcp-auth
+
+    # Environment variables
+    environment:
+      # Set debug mode (optional)
+      # - DEBUG=true
+
+      # Custom headers (optional)
+      # - AUTH_TOKEN=your-token-here
+
+    # For OAuth callback, you might need to expose the port
+    # Uncomment if running OAuth flow inside container
+    # ports:
+    #   - "3334:3334"
+
+    # Override command with your remote server URL
+    # Example: docker-compose run mcp-remote https://remote.mcp.server/sse
+    command: ['--help']
+
+    # Run as non-root user
+    user: mcp
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network mode - use host for OAuth callback to work
+    # network_mode: host
+
+volumes:
+  mcp-auth:
+    driver: local
