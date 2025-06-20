@@ -60,4 +60,4 @@ ENV MCP_REMOTE_CONFIG_DIR=/home/mcp/.mcp-auth
 ENTRYPOINT ["node", "dist/proxy.js"]
 
 # Default arguments (can be overridden)
-CMD ["--help"]
+CMD []
