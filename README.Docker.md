@@ -50,16 +50,19 @@ docker-compose run mcp-remote node dist/client.js https://remote.mcp.server/sse
 For OAuth flows, you'll need to handle the callback URL. Options:
 
 1. **Host Network Mode** (Linux only):
+
 ```bash
 docker run -it --network host mcp-remote:latest https://remote.mcp.server/sse
 ```
 
 2. **Port Forwarding**:
+
 ```bash
 docker run -it -p 3334:3334 mcp-remote:latest https://remote.mcp.server/sse
 ```
 
 3. **Custom Callback Host**:
+
 ```bash
 docker run -it \
   -p 3334:3334 \
@@ -92,15 +95,7 @@ To use the Docker container with Claude Desktop, Cursor, or Windsurf:
   "mcpServers": {
     "remote-example": {
       "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-v",
-        "mcp-auth:/home/mcp/.mcp-auth",
-        "mcp-remote:latest",
-        "https://remote.mcp.server/sse"
-      ]
+      "args": ["run", "-i", "--rm", "-v", "mcp-auth:/home/mcp/.mcp-auth", "mcp-remote:latest", "https://remote.mcp.server/sse"]
     }
   }
 }
@@ -116,6 +111,7 @@ To use the Docker container with Claude Desktop, Cursor, or Windsurf:
 ### OAuth Callback Issues
 
 If the OAuth callback fails:
+
 1. Ensure the port is properly exposed
 2. Check that the callback URL matches what the OAuth provider expects
 3. Consider using host network mode on Linux
