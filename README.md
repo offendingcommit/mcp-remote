@@ -1,316 +1,260 @@
-# `mcp-remote`
+# mcp-remote Docker Distribution
 
-Connect an MCP Client that only supports local (stdio) servers to a Remote MCP Server, with auth support:
+This repository provides Docker images for [mcp-remote](https://github.com/geelen/mcp-remote), a tool that connects MCP clients (Claude Desktop, Cursor, Windsurf) that only support local stdio servers to remote MCP servers with OAuth authentication support.
 
-**Note: this is a working proof-of-concept** but should be considered **experimental**.
+> **Note**: This is a Docker-focused fork. For the npm package and full documentation, please visit the [upstream repository](https://github.com/geelen/mcp-remote).
 
-## Why is this necessary?
+## Quick Start
 
-So far, the majority of MCP servers in the wild are installed locally, using the stdio transport. This has some benefits: both the client and the server can implicitly trust each other as the user has granted them both permission to run. Adding secrets like API keys can be done using environment variables and never leave your machine. And building on `npx` and `uvx` has allowed users to avoid explicit install steps, too.
-
-But there's a reason most software that _could_ be moved to the web _did_ get moved to the web: it's so much easier to find and fix bugs & iterate on new features when you can push updates to all your users with a single deploy.
-
-With the latest MCP [Authorization specification](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization), we now have a secure way of sharing our MCP servers with the world _without_ running code on user's laptops. Or at least, you would, if all the popular MCP _clients_ supported it yet. Most are stdio-only, and those that _do_ support HTTP+SSE don't yet support the OAuth flows required.
-
-That's where `mcp-remote` comes in. As soon as your chosen MCP client supports remote, authorized servers, you can remove it. Until that time, drop in this one liner and dress for the MCP clients you want!
-
-## Usage
-
-All the most popular MCP clients (Claude Desktop, Cursor & Windsurf) use the following config format:
-
-```json
-{
-  "mcpServers": {
-    "remote-example": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://remote.mcp.server/sse"
-      ]
-    }
-  }
-}
-```
-
-### Custom Headers
-
-To bypass authentication, or to emit custom headers on all requests to your remote server, pass `--header` CLI arguments:
-
-```json
-{
-  "mcpServers": {
-    "remote-example": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://remote.mcp.server/sse",
-        "--header",
-        "Authorization: Bearer ${AUTH_TOKEN}"
-      ],
-      "env": {
-        "AUTH_TOKEN": "..."
-      }
-    },
-  }
-}
-```
-
-**Note:** Cursor and Claude Desktop (Windows) have a bug where spaces inside `args` aren't escaped when it invokes `npx`, which ends up mangling these values. You can work around it using:
-
-```jsonc
-{
-  // rest of config...
-  "args": [
-    "mcp-remote",
-    "https://remote.mcp.server/sse",
-    "--header",
-    "Authorization:${AUTH_HEADER}" // note no spaces around ':'
-  ],
-  "env": {
-    "AUTH_HEADER": "Bearer <auth-token>" // spaces OK in env vars
-  }
-},
-```
-
-### Flags
-
-* If `npx` is producing errors, consider adding `-y` as the first argument to auto-accept the installation of the `mcp-remote` package.
-
-```json
-      "command": "npx",
-      "args": [
-        "-y"
-        "mcp-remote",
-        "https://remote.mcp.server/sse"
-      ]
-```
-
-* To force `npx` to always check for an updated version of `mcp-remote`, add the `@latest` flag:
-
-```json
-      "args": [
-        "mcp-remote@latest",
-        "https://remote.mcp.server/sse"
-      ]
-```
-
-* To change which port `mcp-remote` listens for an OAuth redirect (by default `3334`), add an additional argument after the server URL. Note that whatever port you specify, if it is unavailable an open port will be chosen at random.
-
-```json
-      "args": [
-        "mcp-remote",
-        "https://remote.mcp.server/sse",
-        "9696"
-      ]
-```
-
-* To change which host `mcp-remote` registers as the OAuth callback URL (by default `localhost`), add the `--host` flag.
-
-```json
-      "args": [
-        "mcp-remote",
-        "https://remote.mcp.server/sse",
-        "--host",
-        "127.0.0.1"
-      ]
-```
-
-* To allow HTTP connections in trusted private networks, add the `--allow-http` flag. Note: This should only be used in secure private networks where traffic cannot be intercepted.
-
-```json
-      "args": [
-        "mcp-remote",
-        "http://internal-service.vpc/sse",
-        "--allow-http"
-      ]
-```
-
-* To enable detailed debugging logs, add the `--debug` flag. This will write verbose logs to `~/.mcp-auth/{server_hash}_debug.log` with timestamps and detailed information about the auth process, connections, and token refreshing.
-
-```json
-      "args": [
-        "mcp-remote",
-        "https://remote.mcp.server/sse",
-        "--debug"
-      ]
-```
-
-### Transport Strategies
-
-MCP Remote supports different transport strategies when connecting to an MCP server. This allows you to control whether it uses Server-Sent Events (SSE) or HTTP transport, and in what order it tries them.
-
-Specify the transport strategy with the `--transport` flag:
+### Using Pre-built Images
 
 ```bash
-npx mcp-remote https://example.remote/server --transport sse-only
+# Pull the latest image
+docker pull ghcr.io/offendingcommit/mcp-remote:latest
+
+# Run the proxy
+docker run -it ghcr.io/offendingcommit/mcp-remote:latest https://your-remote-mcp.server/sse
 ```
 
-**Available Strategies:**
-
-- `http-first` (default): Tries HTTP transport first, falls back to SSE if HTTP fails with a 404 error
-- `sse-first`: Tries SSE transport first, falls back to HTTP if SSE fails with a 405 error
-- `http-only`: Only uses HTTP transport, fails if the server doesn't support it
-- `sse-only`: Only uses SSE transport, fails if the server doesn't support it
-
-### Static OAuth Client Metadata
-
-MCP Remote supports providing static OAuth client metadata instead of using the mcp-remote defaults.
-This is useful when connecting to OAuth servers that expect specific client/software IDs or scopes.
-
-Provide the client metadata as a JSON string or as a `@` prefixed filepath with the `--static-oauth-client-metadata` flag:
+### Building Locally
 
 ```bash
-npx mcp-remote https://example.remote/server --static-oauth-client-metadata '{ "scope": "space separated scopes" }'
-# uses node readfile, so you probably want to use absolute paths if you're not sure what the cwd is
-npx mcp-remote https://example.remote/server --static-oauth-client-metadata '@/Users/username/Library/Application Support/Claude/oauth_client_metadata.json'
+# Clone the repository
+git clone https://github.com/offendingcommit/mcp-remote.git
+cd mcp-remote
+
+# Build the image
+docker build -t mcp-remote:latest .
+
+# Run the proxy
+docker run -it mcp-remote:latest https://your-remote-mcp.server/sse
 ```
 
-### Static OAuth Client Information
-
-Per the [spec](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization#2-4-dynamic-client-registration),
-servers are encouraged but not required to support [OAuth dynamic client registration](https://datatracker.ietf.org/doc/html/rfc7591).
-
-For these servers, MCP Remote supports providing static OAuth client information instead.
-This is useful when connecting to OAuth servers that require pre-registered clients.
-
-Provide the client metadata as a JSON string or as a `@` prefixed filepath with the `--static-oauth-client-info` flag:
-
-```bash
-export MCP_REMOTE_CLIENT_ID=xxx
-export MCP_REMOTE_CLIENT_SECRET=yyy
-npx mcp-remote https://example.remote/server --static-oauth-client-info "{ \"client_id\": \"$MCP_REMOTE_CLIENT_ID\", \"client_secret\": \"$MCP_REMOTE_CLIENT_SECRET\" }"
-# uses node readfile, so you probably want to use absolute paths if you're not sure what the cwd is
-npx mcp-remote https://example.remote/server --static-oauth-client-info '@/Users/username/Library/Application Support/Claude/oauth_client_info.json'
-```
+## MCP Client Configuration
 
 ### Claude Desktop
 
-[Official Docs](https://modelcontextprotocol.io/quickstart/user)
-
-In order to add an MCP server to Claude Desktop you need to edit the configuration file located at:
-
-* macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-* Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-If it does not exist yet, [you may need to enable it under Settings > Developer](https://modelcontextprotocol.io/quickstart/user#2-add-the-filesystem-mcp-server).
-
-Restart Claude Desktop to pick up the changes in the configuration file.
-Upon restarting, you should see a hammer icon in the bottom right corner
-of the input box.
-
-### Cursor
-
-[Official Docs](https://docs.cursor.com/context/model-context-protocol). The configuration file is located at `~/.cursor/mcp.json`.
-
-As of version `0.48.0`, Cursor supports unauthed SSE servers directly. If your MCP server is using the official MCP OAuth authorization protocol, you still need to add a **"command"** server and call `mcp-remote`.
-
-### Windsurf
-
-[Official Docs](https://docs.codeium.com/windsurf/mcp). The configuration file is located at `~/.codeium/windsurf/mcp_config.json`.
-
-## Building Remote MCP Servers
-
-For instructions on building & deploying remote MCP servers, including acting as a valid OAuth client, see the following resources:
-
-* https://developers.cloudflare.com/agents/guides/remote-mcp-server/
-
-In particular, see:
-
-* https://github.com/cloudflare/workers-oauth-provider for defining an MCP-comlpiant OAuth server in Cloudflare Workers
-* https://github.com/cloudflare/agents/tree/main/examples/mcp for defining an `McpAgent` using the [`agents`](https://npmjs.com/package/agents) framework.
-
-For more information about testing these servers, see also:
-
-* https://developers.cloudflare.com/agents/guides/test-remote-mcp-server/
-
-Know of more resources you'd like to share? Please add them to this Readme and send a PR!
-
-## Troubleshooting
-
-### Clear your `~/.mcp-auth` directory
-
-`mcp-remote` stores all the credential information inside `~/.mcp-auth` (or wherever your `MCP_REMOTE_CONFIG_DIR` points to). If you're having persistent issues, try running:
-
-```sh
-rm -rf ~/.mcp-auth
-```
-
-Then restarting your MCP client.
-
-### Check your Node version
-
-Make sure that the version of Node you have installed is [18 or
-higher](https://modelcontextprotocol.io/quickstart/server). Claude
-Desktop will use your system version of Node, even if you have a newer
-version installed elsewhere.
-
-### Restart Claude
-
-When modifying `claude_desktop_config.json` it can helpful to completely restart Claude
-
-### VPN Certs
-
-You may run into issues if you are behind a VPN, you can try setting the `NODE_EXTRA_CA_CERTS`
-environment variable to point to the CA certificate file. If using `claude_desktop_config.json`,
-this might look like:
+Edit your configuration file:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
- "mcpServers": {
+  "mcpServers": {
     "remote-example": {
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "mcp-remote",
-        "https://remote.mcp.server/sse"
-      ],
-      "env": {
-        "NODE_EXTRA_CA_CERTS": "{your CA certificate file path}.pem"
-      }
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "mcp-auth:/home/mcp/.mcp-auth",
+        "ghcr.io/offendingcommit/mcp-remote:latest",
+        "https://your-remote-mcp.server/sse"
+      ]
     }
   }
 }
 ```
 
-### Check the logs
+### Cursor
 
-* [Follow Claude Desktop logs in real-time](https://modelcontextprotocol.io/docs/tools/debugging#debugging-in-claude-desktop)
-* MacOS / Linux:<br/>`tail -n 20 -F ~/Library/Logs/Claude/mcp*.log`
-* For bash on WSL:<br/>`tail -n 20 -f "C:\Users\YourUsername\AppData\Local\Claude\Logs\mcp.log"`
-* Powershell: <br/>`Get-Content "C:\Users\YourUsername\AppData\Local\Claude\Logs\mcp.log" -Wait -Tail 20`
-
-## Debugging
-
-### Debug Logs
-
-For troubleshooting complex issues, especially with token refreshing or authentication problems, use the `--debug` flag:
+Edit `~/.cursor/mcp.json`:
 
 ```json
-"args": [
-  "mcp-remote",
-  "https://remote.mcp.server/sse",
-  "--debug"
-]
+{
+  "mcpServers": {
+    "remote-example": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "mcp-auth:/home/mcp/.mcp-auth",
+        "ghcr.io/offendingcommit/mcp-remote:latest",
+        "https://your-remote-mcp.server/sse"
+      ]
+    }
+  }
+}
 ```
 
-This creates detailed logs in `~/.mcp-auth/{server_hash}_debug.log` with timestamps and complete information about every step of the connection and authentication process. When you find issues with token refreshing, laptop sleep/resume issues, or auth problems, provide these logs when seeking support.
+### Windsurf
 
-### Authentication Errors
+Edit `~/.codeium/windsurf/mcp_config.json`:
 
-If you encounter the following error, returned by the `/callback` URL:
-
+```json
+{
+  "mcpServers": {
+    "remote-example": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "mcp-auth:/home/mcp/.mcp-auth",
+        "ghcr.io/offendingcommit/mcp-remote:latest",
+        "https://your-remote-mcp.server/sse"
+      ]
+    }
+  }
+}
 ```
-Authentication Error
-Token exchange failed: HTTP 400
+
+## Docker Features
+
+### Persistent Token Storage
+
+OAuth tokens are stored in a Docker volume for persistence across container runs:
+
+```bash
+# Create a named volume
+docker volume create mcp-auth
+
+# Use the volume
+docker run -it -v mcp-auth:/home/mcp/.mcp-auth ghcr.io/offendingcommit/mcp-remote:latest https://your-server/sse
 ```
 
-You can run `rm -rf ~/.mcp-auth` to clear any locally stored state and tokens.
+### OAuth Callback Handling
 
-### "Client" mode
+For OAuth authentication flows, you need to handle the callback URL:
 
-Run the following on the command line (not from an MCP server):
-
-```shell
-npx -p mcp-remote@latest mcp-remote-client https://remote.mcp.server/sse
+#### Option 1: Port Forwarding (Recommended)
+```bash
+docker run -it -p 3334:3334 ghcr.io/offendingcommit/mcp-remote:latest https://your-server/sse
 ```
 
-This will run through the entire authorization flow and attempt to list the tools & resources at the remote URL. Try this after running `rm -rf ~/.mcp-auth` to see if stale credentials are your problem, otherwise hopefully the issue will be more obvious in these logs than those in your MCP client.
+#### Option 2: Host Network Mode (Linux only)
+```bash
+docker run -it --network host ghcr.io/offendingcommit/mcp-remote:latest https://your-server/sse
+```
+
+### Environment Variables
+
+```bash
+# Custom headers with environment variables
+docker run -it \
+  -e AUTH_TOKEN="your-token-here" \
+  ghcr.io/offendingcommit/mcp-remote:latest \
+  https://your-server/sse \
+  --header "Authorization: Bearer ${AUTH_TOKEN}"
+
+# Debug mode
+docker run -it \
+  -v mcp-auth:/home/mcp/.mcp-auth \
+  ghcr.io/offendingcommit/mcp-remote:latest \
+  https://your-server/sse \
+  --debug
+```
+
+### Using Docker Compose
+
+```yaml
+version: '3.8'
+
+services:
+  mcp-remote:
+    image: ghcr.io/offendingcommit/mcp-remote:latest
+    container_name: mcp-remote
+    volumes:
+      - mcp-auth:/home/mcp/.mcp-auth
+    environment:
+      # AUTH_TOKEN: your-token-here
+    ports:
+      - "3334:3334"  # For OAuth callback
+    command: ["https://your-remote-mcp.server/sse"]
+    restart: unless-stopped
+
+volumes:
+  mcp-auth:
+    driver: local
+```
+
+Run with: `docker-compose up`
+
+## Available Images
+
+- `ghcr.io/offendingcommit/mcp-remote:latest` - Latest stable release
+- `ghcr.io/offendingcommit/mcp-remote:main` - Latest main branch build
+- `ghcr.io/offendingcommit/mcp-remote:v*` - Specific version tags
+
+### Supported Platforms
+
+- `linux/amd64`
+- `linux/arm64`
+
+## Command Line Options
+
+All standard mcp-remote options are supported:
+
+```bash
+# Custom callback port
+docker run -it -p 9696:9696 ghcr.io/offendingcommit/mcp-remote:latest https://server/sse 9696
+
+# Custom callback host
+docker run -it ghcr.io/offendingcommit/mcp-remote:latest https://server/sse --host "127.0.0.1"
+
+# Transport strategy
+docker run -it ghcr.io/offendingcommit/mcp-remote:latest https://server/sse --transport sse-only
+
+# Allow HTTP (for trusted networks)
+docker run -it ghcr.io/offendingcommit/mcp-remote:latest http://internal-server/sse --allow-http
+```
+
+## Troubleshooting
+
+### Clear Authentication Cache
+```bash
+# Remove the volume
+docker volume rm mcp-auth
+
+# Or clear specific server data
+docker run --rm -v mcp-auth:/home/mcp/.mcp-auth alpine rm -rf /home/mcp/.mcp-auth/*
+```
+
+### View Debug Logs
+```bash
+# Enable debug mode
+docker run -it -v mcp-auth:/home/mcp/.mcp-auth ghcr.io/offendingcommit/mcp-remote:latest https://server/sse --debug
+
+# View logs
+docker run --rm -v mcp-auth:/home/mcp/.mcp-auth alpine find /home/mcp/.mcp-auth -name "*_debug.log" -exec cat {} \;
+```
+
+### VPN/Proxy Issues
+```bash
+# Mount CA certificates
+docker run -it \
+  -v /path/to/ca-cert.pem:/certs/ca.pem:ro \
+  -e NODE_EXTRA_CA_CERTS=/certs/ca.pem \
+  ghcr.io/offendingcommit/mcp-remote:latest \
+  https://server/sse
+```
+
+## Building and Contributing
+
+This repository focuses on Docker packaging for mcp-remote. For core functionality changes, please contribute to the [upstream repository](https://github.com/geelen/mcp-remote).
+
+### Build Requirements
+- Docker
+- Docker Buildx (for multi-platform builds)
+
+### Build Commands
+```bash
+# Build for current platform
+docker build -t mcp-remote:local .
+
+# Build for multiple platforms
+docker buildx build --platform linux/amd64,linux/arm64 -t mcp-remote:local .
+```
+
+## License
+
+MIT - See [LICENSE](LICENSE) file
+
+## Credits
+
+- Original mcp-remote by [@geelen](https://github.com/geelen)
+- Docker distribution maintained by [@offendingcommit](https://github.com/offendingcommit)

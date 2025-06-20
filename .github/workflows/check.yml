@@ -1,5 +1,7 @@
 name: Check
 
+# This workflow ensures code quality by running prettier formatting checks
+# and TypeScript type checking on all pull requests
 on:
   pull_request:
     branches:
